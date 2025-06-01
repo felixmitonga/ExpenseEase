@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const vision = require('@google-cloud/vision');
+const nodemailer = require('nodemailer');
 admin.initializeApp();
 
 const client = new vision.ImageAnnotatorClient();
@@ -68,7 +69,7 @@ exports.processReceipt = functions.firestore
     }
   });
 
-// Modified report function with console logging instead of email
+// Send report via email
 exports.sendReportEmail = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -79,18 +80,46 @@ exports.sendReportEmail = functions.https.onCall(async (data, context) => {
   
   const { email, reportData } = data;
   
-  // Log report details instead of sending email
-  console.log('---------- EXPENSE REPORT READY ----------');
-  console.log('Would send to:', email);
-  console.log('Report Period:', reportData.startDate, 'to', reportData.endDate);
-  console.log('Categories:', Object.entries(reportData.categories)
-    .map(([cat, total]) => `${cat}: $${total.toFixed(2)}`)
-    .join(', '));
-  console.log('Total: $' + reportData.total.toFixed(2));
-  console.log('-----------------------------------------');
+  // Configure email transporter
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: functions.config().gmail.email,
+      pass: functions.config().gmail.password
+    }
+  });
   
-  return { 
-    success: true, 
-    message: 'Report logged to console (email functionality disabled)' 
-  };
+  try {
+    // Create email content
+    const mailOptions = {
+      from: `ExpenseTracker <${functions.config().gmail.email}>`,
+      to: email,
+      subject: `Expense Report ${reportData.startDate} to ${reportData.endDate}`,
+      html: `
+        <h1>Expense Report</h1>
+        <p>Period: ${new Date(reportData.startDate).toLocaleDateString()} - ${new Date(reportData.endDate).toLocaleDateString()}</p>
+        
+        <h2>Category Summary</h2>
+        <ul>
+          ${Object.entries(reportData.categories).map(([category, total]) => `
+            <li><strong>${category}:</strong> $${total.toFixed(2)}</li>
+          `).join('')}
+        </ul>
+        
+        <h3>Total: $${reportData.total.toFixed(2)}</h3>
+        
+        <p>This report was generated on ${new Date().toLocaleDateString()}.</p>
+      `,
+      attachments: [{
+        filename: `expense_report_${reportData.startDate}_${reportData.endDate}.pdf`,
+        path: 'https://yourapp.com/generate-pdf' // You would implement this endpoint
+      }]
+    };
+    
+    await transporter.sendMail(mailOptions);
+    return { success: true };
+  } catch (error) {
+    console.error('Error sending email:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to send email');
+  }
 });
