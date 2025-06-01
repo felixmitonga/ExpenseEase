@@ -1,19 +1,34 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+const vision = require('@google-cloud/vision');
+admin.initializeApp();
+const client = new vision.ImageAnnotatorClient();
 
-const {onRequest} = require("firebase-functions/v2/https");
-const logger = require("firebase-functions/logger");
+exports.processReceipt = functions.firestore
+  .document('expenses/{expenseId}')
+  .onCreate(async (snap, context) => {
+    const expense = snap.data();
+    if (expense.status !== 'pending_processing') return null;
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+    try {
+      const [result] = await client.textDetection(expense.imageUrl);
+      const text = result.textAnnotations?.[0]?.description || '';
+      
+      const amountMatch = text.match(/(\d+\.\d{2})/);
+      const amount = amountMatch ? parseFloat(amountMatch[1]) : 0;
 
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+      let category = 'Other';
+      if (/restaurant|cafe|food/i.test(text)) category = 'Food';
+      else if (/gas|fuel|parking/i.test(text)) category = 'Transport';
+
+      return snap.ref.update({
+        amount,
+        category,
+        status: 'processed',
+        processedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Processing failed:', error);
+      return snap.ref.update({ status: 'failed' });
+    }
+  });
