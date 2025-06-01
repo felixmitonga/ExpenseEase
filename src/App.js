@@ -7,7 +7,6 @@ import Register from './components/Auth/Register';
 import AddExpense from './components/Expense/AddExpense';
 import ExpenseList from './components/Expense/ExpenseList';
 import ReportGenerator from './components/Reports/ReportGenerator';
-import Home from './components/Home';
 import './App.css';
 
 function App() {
@@ -20,7 +19,6 @@ function App() {
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
-              <Route path="/" element={<PrivateRoute><Home /></PrivateRoute>} />
               <Route path="/add-expense" element={<PrivateRoute><AddExpense /></PrivateRoute>} />
               <Route path="/expenses" element={<PrivateRoute><ExpenseList /></PrivateRoute>} />
               <Route path="/reports" element={<PrivateRoute><ReportGenerator /></PrivateRoute>} />
